@@ -295,7 +295,7 @@ const lastAdded = tracks.map(t => t.a).sort().at(-1);
 
 $('#subline').textContent =
   `A collaborative playlist of ${tracks.length.toLocaleString()} tracks spanning ${Math.min(...years)}–${Math.max(...years)}, ` +
-  `built by ${ADDERS.join(' and ')} since ${tracks.map(t=>t.a).sort()[0]}.`;
+  `built by ${ADDERS.length > 1 ? ADDERS.slice(0,-1).join(', ') + ' and ' + ADDERS.at(-1) : ADDERS[0]} since ${tracks.map(t=>t.a).sort()[0]}.`;
 $('#exportDate').textContent = lastAdded;
 
 /* KPI row */
@@ -314,17 +314,17 @@ function renderGrowth() {
   const pw = W - m.l - m.r, ph = H - m.t - m.b;
   const sorted = [...tracks].sort((a,b) => a.a < b.a ? -1 : 1);
   const t0 = Date.parse(sorted[0].a), t1 = Date.parse(sorted.at(-1).a);
-  const pts = []; // {t, c0, c1}
-  let c0 = 0, c1 = 0;
+  const pts = []; // {t, c: [count per adder]}
+  const cum = ADDERS.map(() => 0);
   for (const t of sorted) {
-    if (t.b === 0) c0++; else c1++;
-    pts.push({t: Date.parse(t.a), c0, c1});
+    cum[t.b]++;
+    pts.push({t: Date.parse(t.a), c: [...cum]});
   }
   const x = (t) => m.l + (t - t0) / (t1 - t0) * pw;
-  const maxY = c0 + 20;
+  const maxY = Math.max(...cum) + 20;
   const y = (v) => m.t + ph - v / maxY * ph;
 
-  const colors = [css('--series-1'), css('--series-2')];
+  const colors = [css('--series-1'), css('--series-2'), css('--series-3')];
   let grid = '', xlab = '';
   for (let v = 0; v <= maxY; v += 250) {
     grid += `<line class="grid-line" x1="${m.l}" x2="${m.l+pw}" y1="${y(v)}" y2="${y(v)}"/>`;
@@ -335,14 +335,23 @@ function renderGrowth() {
     const tx = x(Date.parse(yr + '-01-01'));
     xlab += `<text class="axis-label" x="${tx}" y="${H-8}" text-anchor="middle">${yr}</text>`;
   }
-  const path = (key) => pts.map((p,i) => `${i?'L':'M'}${x(p.t).toFixed(1)},${y(p[key]).toFixed(1)}`).join('');
+  const path = (ai) => pts.map((p,i) => `${i?'L':'M'}${x(p.t).toFixed(1)},${y(p.c[ai]).toFixed(1)}`).join('');
+  let lines = '', labels = '';
+  // nudge end labels apart if two adders finish at similar counts
+  const labelYs = cum.map(v => y(v) + 4);
+  const order = ADDERS.map((_,i) => i).sort((a,b) => labelYs[a] - labelYs[b]);
+  for (let k = 1; k < order.length; k++) {
+    const prev = order[k-1], curr = order[k];
+    if (labelYs[curr] - labelYs[prev] < 14) labelYs[curr] = labelYs[prev] + 14;
+  }
+  ADDERS.forEach((a, i) => {
+    lines += `<path d="${path(i)}" fill="none" stroke="${colors[i]}" stroke-width="2"/>`;
+    labels += `<text class="direct-label" x="${m.l+pw+8}" y="${labelYs[i]}" fill="${colors[i]}">${esc(a)} · ${cum[i]}</text>`;
+  });
   const html = `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto" role="img" aria-label="Cumulative playlist growth by adder">
     ${grid}${xlab}
     <line class="base-line" x1="${m.l}" x2="${m.l+pw}" y1="${y(0)}" y2="${y(0)}"/>
-    <path d="${path('c0')}" fill="none" stroke="${colors[0]}" stroke-width="2"/>
-    <path d="${path('c1')}" fill="none" stroke="${colors[1]}" stroke-width="2"/>
-    <text class="direct-label" x="${m.l+pw+8}" y="${y(c0)+4}" fill="${colors[0]}">${esc(ADDERS[0])} · ${c0}</text>
-    <text class="direct-label" x="${m.l+pw+8}" y="${y(c1)+4}" fill="${colors[1]}">${esc(ADDERS[1])} · ${c1}</text>
+    ${lines}${labels}
     <line id="growthCrosshair" x1="0" x2="0" y1="${m.t}" y2="${m.t+ph}" stroke="${css('--baseline')}" stroke-width="1" visibility="hidden"/>
     <rect id="growthHit" x="${m.l}" y="${m.t}" width="${pw}" height="${ph}" fill="transparent"/>
   </svg>`;
@@ -363,7 +372,7 @@ function renderGrowth() {
     cross.setAttribute('x1', x(p.t)); cross.setAttribute('x2', x(p.t));
     cross.setAttribute('visibility', 'visible');
     const d = new Date(p.t).toISOString().slice(0,10);
-    showTip(`<div class="t-title">${d}</div>${esc(ADDERS[0])}: ${p.c0} tracks<br>${esc(ADDERS[1])}: ${p.c1} tracks`, e.clientX, e.clientY);
+    showTip(`<div class="t-title">${d}</div>` + ADDERS.map((a,i) => `${esc(a)}: ${p.c[i]} tracks`).join('<br>'), e.clientX, e.clientY);
   });
   hit.addEventListener('mouseleave', () => { cross.setAttribute('visibility','hidden'); hideTip(); });
 }
