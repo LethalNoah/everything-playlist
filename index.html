@@ -170,8 +170,10 @@
     <h2>The mood map</h2>
     <p class="desc">Every track by Spotify's <em>valence</em> (musical positivity) and <em>energy</em>. Hover a dot for the track; use the filters to light up a slice of the playlist.</p>
     <div class="filters">
+      <input type="search" id="moodSearch" placeholder="Find a track or artist…" size="26" aria-label="Search for a track on the mood map">
       <select id="genreFilter" aria-label="Filter by genre"></select>
       <select id="adderFilter" aria-label="Filter by adder"></select>
+      <span id="moodCount" style="align-self:center;font-size:13px;color:var(--text-muted)"></span>
     </div>
     <div id="moodChart"></div>
   </div>
@@ -385,15 +387,18 @@ $('#adderFilter').innerHTML = `<option value="">Added by anyone</option>` +
   ADDERS.map((a,i) => `<option value="${i}">${esc(a)}</option>`).join('');
 $('#genreFilter').addEventListener('change', renderMood);
 $('#adderFilter').addEventListener('change', renderMood);
+$('#moodSearch').addEventListener('input', renderMood);
 
 function renderMood() {
   const W = 1040, H = 480, m = {t: 24, r: 24, b: 40, l: 48};
   const pw = W - m.l - m.r, ph = H - m.t - m.b;
   const gf = $('#genreFilter').value, af = $('#adderFilter').value;
-  const active = (t) => (!gf || t.g.includes(gf)) && (af === '' || t.b === +af);
+  const q = $('#moodSearch').value.trim().toLowerCase();
+  const active = (t) => (!gf || t.g.includes(gf)) && (af === '' || t.b === +af) &&
+    (!q || t.n.toLowerCase().includes(q) || t.ar.toLowerCase().includes(q) || t.al.toLowerCase().includes(q));
   const x = (v) => m.l + v * pw, y = (v) => m.t + ph - v * ph;
   const accent = css('--series-1'), gray = css('--deemph');
-  const filtering = gf !== '' || af !== '';
+  const filtering = gf !== '' || af !== '' || q !== '';
 
   let dots = '';
   const pos = [];
@@ -420,8 +425,19 @@ function renderMood() {
     <text class="quad-label" x="${x(0.98)}" y="${y(0.96)}" text-anchor="end">euphoric bangers</text>
     <text class="quad-label" x="${x(0.02)}" y="${y(0.03)}">sad &amp; mellow</text>
     <text class="quad-label" x="${x(0.98)}" y="${y(0.03)}" text-anchor="end">chill &amp; happy</text>`;
+  // search matches get a persistent ring, and a name label when there are only a few
+  let marks = '';
+  if (q && pos.length <= 60) {
+    for (const p of pos) marks += `<circle cx="${p.cx}" cy="${p.cy}" r="6.5" fill="none" stroke="${accent}" stroke-width="2"/>`;
+    if (pos.length <= 8) for (const p of pos) {
+      const left = p.cx > W - 220;
+      marks += `<text class="direct-label" x="${p.cx + (left ? -11 : 11)}" y="${p.cy + 4}"${left ? ' text-anchor="end"' : ''}>${esc(p.t.n)}</text>`;
+    }
+  }
+  $('#moodCount').textContent = q ? `${pos.length} ${pos.length === 1 ? 'match' : 'matches'}` :
+    (filtering ? `${pos.length} tracks highlighted` : '');
   $('#moodChart').innerHTML = `<svg id="moodSvg" viewBox="0 0 ${W} ${H}" style="width:100%;height:auto" role="img" aria-label="Scatter plot of valence versus energy for every track">
-    ${axes}${dots}${quads}
+    ${axes}${dots}${quads}${marks}
     <circle id="moodHalo" r="6" fill="none" stroke="${accent}" stroke-width="2" visibility="hidden"/>
     <text class="axis-label" x="${m.l+pw/2}" y="${H-2}" text-anchor="middle">valence (sad → happy)</text>
     <text class="axis-label" transform="rotate(-90 14 ${m.t+ph/2})" x="14" y="${m.t+ph/2}" text-anchor="middle">energy (calm → intense)</text>
